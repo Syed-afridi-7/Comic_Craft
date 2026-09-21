@@ -2,7 +2,10 @@
 
 import logging
 from typing import Any, Optional
-import google.generativeai as genai
+try:
+    import google.generativeai as genai
+except ImportError:
+    genai = None
 
 from app.config import get_settings
 
@@ -18,7 +21,7 @@ def configure_gemini() -> Optional[Any]:
     settings = get_settings()
     api_key = settings.GEMINI_API_KEY.strip() if settings.GEMINI_API_KEY else ""
 
-    if not api_key or settings.DEV_MOCK_AI:
+    if genai is None or not api_key or settings.DEV_MOCK_AI:
         logger.info("Gemini AI client disabled: running in mock mode or API key missing.")
         return None
 
