@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ComicCraft: AI Comic Story Creator</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+  <div class="container">
+    <header class="comic-header">
+      <h1 class="comic-title">ComicCraft</h1>
+      <p class="comic-subtitle">Generate personalized 5-panel comic books powered by Google Gemini and AI Art</p>
+    </header>
+
+    <div class="card">
+      <form action="/generate" method="POST" id="comic-form">
+        <div class="form-group">
+          <label for="prompt">Comic Story Premise / Prompt:</label>
+          <textarea id="prompt" name="prompt" rows="3" required placeholder="e.g. A clever fox discovers an ancient observatory atop the Whispering Mountain..."></textarea>
+        </div>
+
+        <div class="grid-2">
+          <div class="form-group">
+            <label for="character_name">Hero / Main Character Name:</label>
+            <input type="text" id="character_name" name="character_name" value="Kael" required>
+          </div>
+
+          <div class="form-group">
+            <label for="setting">Setting / World:</label>
+            <select id="setting" name="setting">
+              <option value="Enchanted Forest" selected>Enchanted Forest</option>
+              <option value="Cyberpunk Metropolis">Cyberpunk Metropolis</option>
+              <option value="Deep Space & Asteroid Belt">Deep Space & Asteroid Belt</option>
+              <option value="Ancient Dungeon Ruins">Ancient Dungeon Ruins</option>
+              <option value="High School Campus">High School Campus</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="grid-2">
+          <div class="form-group">
+            <label for="tone">Story Tone:</label>
+            <select id="tone" name="tone">
+              <option value="Dramatic" selected>Dramatic</option>
+              <option value="Funny & Humorous">Funny & Humorous</option>
+              <option value="Light-hearted & Adventurous">Light-hearted & Adventurous</option>
+              <option value="Poetic & Mysterious">Poetic & Mysterious</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label for="art_style">Comic Art Style:</label>
+            <select id="art_style" name="art_style">
+              <option value="Classic Comic Book" selected>Classic Comic Book</option>
+              <option value="Anime">Anime</option>
+              <option value="Pixel Art">Pixel Art</option>
+              <option value="Graphic Novel Noir">Graphic Novel Noir</option>
+              <option value="Realistic">Realistic</option>
+            </select>
+          </div>
+        </div>
+
+        <div style="text-align: center; margin-top: 1.5rem;">
+          <button type="submit" class="btn-comic">⚡ Generate 5-Panel Comic</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div id="spinner-overlay">
+    <div class="spinner"></div>
+    <h2>Crafting Your Comic...</h2>
+    <p style="color: var(--text-muted); margin-top: 0.5rem;">Gemini is writing the script &amp; AI is drawing all 5 panels in parallel!</p>
+  </div>
+
+  <script>
+    document.getElementById('comic-form').addEventListener('submit', function() {
+      document.getElementById('spinner-overlay').style.display = 'flex';
+    });
+  </script>
+</body>
+</html>

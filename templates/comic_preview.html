@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{ story_metadata.title or "Comic Preview" }} - ComicCraft</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+  <div class="container">
+    <header class="comic-header">
+      <h1 class="comic-title">{{ story_metadata.title or "Your Comic Story" }}</h1>
+      <p class="comic-subtitle">
+        Hero: <strong>{{ story_metadata.character_name }}</strong> | 
+        Setting: <strong>{{ story_metadata.setting }}</strong> | 
+        Tone: <strong>{{ story_metadata.tone }}</strong> | 
+        Style: <strong>{{ story_metadata.art_style }}</strong>
+      </p>
+      <div style="margin-top: 1.5rem; display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap;">
+        <a href="{{ pdf_url }}" class="btn-comic btn-yellow" download>📥 Download Your Comic as PDF</a>
+        <a href="/" class="btn-comic" style="background: #444;">✏️ Create Another</a>
+      </div>
+    </header>
+
+    <div class="comic-panels-container">
+      {% for panel in layout %}
+      <div class="panel-card">
+        <span class="panel-badge">{{ panel.title }}</span>
+        
+        <img src="{{ panel.image_url }}" alt="{{ panel.title }}" class="panel-image" loading="lazy">
+        
+        {% if panel.scene_description %}
+        <p class="scene-desc"><em>{{ panel.scene_description }}</em></p>
+        {% endif %}
+        
+        {% if panel.caption %}
+        <div class="caption-box">
+          <strong>CAPTION:</strong> {{ panel.caption }}
+        </div>
+        {% endif %}
+        
+        {% if panel.narration %}
+        <div class="narration-box">
+          {{ panel.narration }}
+        </div>
+        {% endif %}
+        
+        {% if panel.dialogue %}
+        <div class="speech-bubble">
+          {{ panel.dialogue }}
+        </div>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+
+    <div style="text-align: center; margin: 3rem 0; display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap;">
+      <a href="{{ pdf_url }}" class="btn-comic btn-yellow" download>📥 Download Your Comic as PDF</a>
+      <a href="/export-success?pdf_path={{ pdf_url }}" class="btn-comic">Complete &amp; View Export</a>
+    </div>
+  </div>
+</body>
+</html>

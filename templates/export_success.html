@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Comic Exported Successfully! - ComicCraft</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+  <div class="container" style="text-align: center; margin-top: 4rem;">
+    <div class="card">
+      <h1 class="comic-title" style="color: var(--accent-cyan); font-size: 2.5rem;">🎉 Comic Exported!</h1>
+      <p style="font-size: 1.25rem; margin: 1.5rem 0;">Your 5-panel comic has been compiled into a high-quality multi-page PDF.</p>
+      
+      <div style="margin: 2rem 0; display: flex; justify-content: center; gap: 1rem; flex-wrap: wrap;">
+        <a href="{{ pdf_path }}" class="btn-comic btn-yellow" download>📥 Download Comic PDF</a>
+        <a href="/" class="btn-comic">✨ Go Create Another Comic</a>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
