@@ -183,3 +183,55 @@ def test_static_files_serving(client):
     assert response.status_code == 200
     assert "text/css" in response.headers["content-type"]
     assert "--comic-bg" in response.text
+
+
+def test_post_generate_form_pipeline_error(client, monkeypatch):
+    """Test POST /generate returns 500 when pipeline raises an exception."""
+    from app import routes
+
+    def mock_fail(*args, **kwargs):
+        raise RuntimeError("LLM service unavailable")
+
+    monkeypatch.setattr(routes, "generate_outline", mock_fail)
+
+    form_data = {
+        "prompt": "Valid test prompt for error test",
+        "character_name": "Hero",
+    }
+    response = client.post("/generate", data=form_data)
+    assert response.status_code == 500
+    assert "Comic generation failed: LLM service unavailable" in response.json()["detail"]
+
+
+def test_post_generate_comic_json_pipeline_error(client, monkeypatch):
+    """Test POST /generate-comic/json returns 500 when pipeline raises an exception."""
+    from app import routes
+
+    def mock_fail(*args, **kwargs):
+        raise RuntimeError("Quota exceeded")
+
+    monkeypatch.setattr(routes, "generate_outline", mock_fail)
+
+    payload = {
+        "prompt": "Valid test prompt for JSON error test",
+        "character_name": "Hero",
+    }
+    response = client.post("/generate-comic/json", json=payload)
+    assert response.status_code == 500
+    assert "Comic generation failed: Quota exceeded" in response.json()["detail"]
+
+
+def test_get_test_image_failure(client, monkeypatch):
+    """Test GET /test-image returns 500 when image synthesis raises an exception."""
+    from app import routes
+
+    def mock_fail(*args, **kwargs):
+        raise RuntimeError("Diffusion model failure")
+
+    monkeypatch.setattr(routes, "generate_image", mock_fail)
+
+    params = {"prompt": "Valid prompt for test image error"}
+    response = client.get("/test-image", params=params)
+    assert response.status_code == 500
+    assert "Image generation failed: Diffusion model failure" in response.json()["detail"]
+

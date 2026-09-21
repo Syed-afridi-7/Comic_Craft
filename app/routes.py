@@ -4,7 +4,7 @@ import logging
 from pathlib import Path
 from typing import Any, Dict, List
 
-from fastapi import APIRouter, Form, Query, Request
+from fastapi import APIRouter, Form, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
@@ -48,31 +48,38 @@ async def generate_comic_html(
     """
     logger.info("Starting comic generation pipeline for character '%s'", character_name)
 
-    # 1. Generate 5-panel story outline via Gemini Flash
-    outline = generate_outline(prompt, character_name, setting, tone, art_style)
+    try:
+        # 1. Generate 5-panel story outline via Gemini Flash
+        outline = generate_outline(prompt, character_name, setting, tone, art_style)
 
-    # 2. Generate narrative, captions, and dialogues via Gemini Pro
-    story = generate_story(outline, character_name, tone)
+        # 2. Generate narrative, captions, and dialogues via Gemini Pro
+        story = generate_story(outline, character_name, tone)
 
-    # 3. Concurrently synthesize all panel artwork
-    image_paths = await generate_all_panels(outline, art_style)
+        # 3. Concurrently synthesize all panel artwork
+        image_paths = await generate_all_panels(outline, art_style)
 
-    # 4. Assemble layout data structure
-    layout = build_comic_layout(outline, story, image_paths)
+        # 4. Assemble layout data structure
+        layout = build_comic_layout(outline, story, image_paths)
 
-    # 5. Compile story metadata
-    story_title = f"{character_name}'s Quest in {setting}"
-    story_metadata: Dict[str, Any] = {
-        "title": story_title,
-        "story_title": story_title,
-        "character_name": character_name,
-        "setting": setting,
-        "tone": tone,
-        "art_style": art_style,
-    }
+        # 5. Compile story metadata
+        story_title = f"{character_name}'s Quest in {setting}"
+        story_metadata: Dict[str, Any] = {
+            "title": story_title,
+            "story_title": story_title,
+            "character_name": character_name,
+            "setting": setting,
+            "tone": tone,
+            "art_style": art_style,
+        }
 
-    # 6. Save publication PDF export
-    pdf_url = save_pdf(layout, story_metadata)
+        # 6. Save publication PDF export
+        pdf_url = save_pdf(layout, story_metadata)
+    except Exception as exc:
+        logger.error("Comic HTML generation pipeline failed: %s", exc, exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Comic generation failed: {str(exc)}",
+        ) from exc
 
     return templates.TemplateResponse(
         request=request,
@@ -94,33 +101,40 @@ async def generate_comic_json(req: PromptRequest):
     """
     logger.info("Generating comic via JSON API for character '%s'", req.character_name)
 
-    outline = generate_outline(
-        req.prompt,
-        req.character_name,
-        req.setting,
-        req.tone,
-        req.art_style,
-    )
-    story = generate_story(outline, req.character_name, req.tone)
-    image_paths = await generate_all_panels(outline, req.art_style)
-    layout = build_comic_layout(outline, story, image_paths)
+    try:
+        outline = generate_outline(
+            req.prompt,
+            req.character_name,
+            req.setting,
+            req.tone,
+            req.art_style,
+        )
+        story = generate_story(outline, req.character_name, req.tone)
+        image_paths = await generate_all_panels(outline, req.art_style)
+        layout = build_comic_layout(outline, story, image_paths)
 
-    story_title = f"{req.character_name}'s Quest in {req.setting}"
-    story_metadata: Dict[str, Any] = {
-        "title": story_title,
-        "story_title": story_title,
-        "character_name": req.character_name,
-        "setting": req.setting,
-        "tone": req.tone,
-        "art_style": req.art_style,
-    }
+        story_title = f"{req.character_name}'s Quest in {req.setting}"
+        story_metadata: Dict[str, Any] = {
+            "title": story_title,
+            "story_title": story_title,
+            "character_name": req.character_name,
+            "setting": req.setting,
+            "tone": req.tone,
+            "art_style": req.art_style,
+        }
 
-    pdf_url = save_pdf(layout, story_metadata)
+        pdf_url = save_pdf(layout, story_metadata)
 
-    comic_panels = [
-        ComicPanel(**panel) if isinstance(panel, dict) else panel
-        for panel in layout
-    ]
+        comic_panels = [
+            ComicPanel(**panel) if isinstance(panel, dict) else panel
+            for panel in layout
+        ]
+    except Exception as exc:
+        logger.error("Comic JSON generation pipeline failed: %s", exc, exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Comic generation failed: {str(exc)}",
+        ) from exc
 
     return ComicResponse(
         status="success",
@@ -135,19 +149,26 @@ async def generate_comic_json(req: PromptRequest):
 
 
 @router.get("/test-image")
-async def test_image(
+def test_image(
     prompt: str = Query(...),
     art_style: str = Query("Classic Comic Book"),
 ):
     """Developer testing endpoint to generate a single panel illustration."""
-    saved_path = generate_image(prompt=prompt, panel_number=1, art_style=art_style)
-    filename = Path(saved_path).name
-    return {
-        "status": "success",
-        "prompt": prompt,
-        "art_style": art_style,
-        "image_url": f"/static/panels/{filename}",
-    }
+    try:
+        saved_path = generate_image(prompt=prompt, panel_number=1, art_style=art_style)
+        filename = Path(saved_path).name
+        return {
+            "status": "success",
+            "prompt": prompt,
+            "art_style": art_style,
+            "image_url": f"/static/panels/{filename}",
+        }
+    except Exception as exc:
+        logger.error("Single panel image generation failed: %s", exc, exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Image generation failed: {str(exc)}",
+        ) from exc
 
 
 @router.get("/export-success", response_class=HTMLResponse)
