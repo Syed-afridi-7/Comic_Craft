@@ -1,5 +1,6 @@
 """FastAPI endpoint routes and controllers for ComicCraft."""
 
+import asyncio
 import logging
 from pathlib import Path
 from typing import Any, Dict, List
@@ -21,6 +22,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 settings = get_settings()
 templates = Jinja2Templates(directory=str(settings.BASE_DIR / "templates"))
+DEFAULT_EXPORT_PDF = "/static/exports/comic.pdf"
 
 
 @router.get("/", response_class=HTMLResponse)
@@ -49,11 +51,13 @@ async def generate_comic_html(
     logger.info("Starting comic generation pipeline for character '%s'", character_name)
 
     try:
-        # 1. Generate 5-panel story outline via Gemini Flash
-        outline = generate_outline(prompt, character_name, setting, tone, art_style)
+        # 1. Generate 5-panel story outline via Gemini Flash (offloaded to thread)
+        outline = await asyncio.to_thread(
+            generate_outline, prompt, character_name, setting, tone, art_style
+        )
 
-        # 2. Generate narrative, captions, and dialogues via Gemini Pro
-        story = generate_story(outline, character_name, tone)
+        # 2. Generate narrative, captions, and dialogues via Gemini Pro (offloaded to thread)
+        story = await asyncio.to_thread(generate_story, outline, character_name, tone)
 
         # 3. Concurrently synthesize all panel artwork
         image_paths = await generate_all_panels(outline, art_style)
@@ -72,8 +76,8 @@ async def generate_comic_html(
             "art_style": art_style,
         }
 
-        # 6. Save publication PDF export
-        pdf_url = save_pdf(layout, story_metadata)
+        # 6. Save publication PDF export (offloaded to thread)
+        pdf_url = await asyncio.to_thread(save_pdf, layout, story_metadata)
     except Exception as exc:
         logger.error("Comic HTML generation pipeline failed: %s", exc, exc_info=True)
         raise HTTPException(
@@ -102,14 +106,15 @@ async def generate_comic_json(req: PromptRequest):
     logger.info("Generating comic via JSON API for character '%s'", req.character_name)
 
     try:
-        outline = generate_outline(
+        outline = await asyncio.to_thread(
+            generate_outline,
             req.prompt,
             req.character_name,
             req.setting,
             req.tone,
             req.art_style,
         )
-        story = generate_story(outline, req.character_name, req.tone)
+        story = await asyncio.to_thread(generate_story, outline, req.character_name, req.tone)
         image_paths = await generate_all_panels(outline, req.art_style)
         layout = build_comic_layout(outline, story, image_paths)
 
@@ -123,7 +128,7 @@ async def generate_comic_json(req: PromptRequest):
             "art_style": req.art_style,
         }
 
-        pdf_url = save_pdf(layout, story_metadata)
+        pdf_url = await asyncio.to_thread(save_pdf, layout, story_metadata)
 
         comic_panels = [
             ComicPanel(**panel) if isinstance(panel, dict) else panel
@@ -172,11 +177,18 @@ def test_image(
 
 
 @router.get("/export-success", response_class=HTMLResponse)
-async def export_success(
+async def get_export_success(
     request: Request,
-    pdf_path: str = Query("/static/exports/comic.pdf"),
+    pdf_path: str = Query(DEFAULT_EXPORT_PDF),
 ):
     """Render export completion confirmation screen with direct PDF download link."""
+    if not pdf_path or not pdf_path.startswith("/static/exports/") or ".." in pdf_path or ":" in pdf_path:
+        logger.warning(
+            "Invalid or suspicious pdf_path '%s' provided to /export-success, sanitizing to default.",
+            pdf_path,
+        )
+        pdf_path = DEFAULT_EXPORT_PDF
+
     return templates.TemplateResponse(
         request=request,
         name="export_success.html",
@@ -185,3 +197,7 @@ async def export_success(
             "pdf_path": pdf_path,
         },
     )
+
+
+# Backward compatibility alias
+export_success = get_export_success

@@ -159,6 +159,26 @@ def test_get_export_success_custom_path(client):
     assert custom_pdf in response.text
 
 
+@pytest.mark.parametrize(
+    "invalid_path",
+    [
+        "javascript:alert(1)",
+        "https://attacker.com",
+        "https://attacker.com/evil.pdf",
+        "/static/exports/../secrets.txt",
+        "/static/exports/c:evil.pdf",
+        "/etc/passwd",
+    ],
+)
+def test_get_export_success_sanitizes_invalid_paths(client, invalid_path):
+    """Verify invalid or malicious pdf_path parameters are sanitized to default export path."""
+    response = client.get("/export-success", params={"pdf_path": invalid_path})
+    assert response.status_code == 200
+    assert "text/html" in response.headers["content-type"]
+    assert "/static/exports/comic.pdf" in response.text
+    assert invalid_path not in response.text
+
+
 def test_post_generate_form_missing_prompt(client):
     """Test POST /generate without required prompt field fails validation with 422."""
     response = client.post("/generate", data={"character_name": "Hero"})
