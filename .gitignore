@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+env/
+venv/
+.env
+static/panels/*.png
+static/panels/*.jpg
+static/exports/*.pdf
+!static/panels/.gitkeep
+!static/exports/.gitkeep
+.pytest_cache/
