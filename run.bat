@@ -2,6 +2,9 @@
 setlocal enabledelayedexpansion
 title ComicCraft - AI Comic Story Creator
 
+:: Change directory to where this batch file is located
+cd /d "%~dp0"
+
 echo ========================================================
 echo         ComicCraft: AI Comic Story Creator
 echo ========================================================
@@ -32,29 +35,45 @@ if exist "env\Scripts\activate.bat" (
 :: 3. Check for .env file
 if not exist ".env" (
     if exist ".env.example" (
-        echo [*] Creating .env from .env.example with default mock/offline settings...
-        copy .env.example .env >nul
+        echo [*] Initializing .env from .env.example (mock/offline mode by default)...
+        copy /y ".env.example" ".env" >nul
     )
 )
 
-:: 4. Verify/Ensure required directories exist
+:: 4. Verify/Ensure required media directories exist
 if not exist "static\panels" mkdir "static\panels"
 if not exist "static\exports" mkdir "static\exports"
 
+:: 5. Check if port 8000 is already in use
+netstat -ano | findstr /R /C:":8000 .*LISTENING" >nul 2>nul
+if %errorlevel% equ 0 (
+    echo [!] Port 8000 is currently in use by another process.
+    echo Attempting to free port 8000...
+    for /f "tokens=5" %%a in ('netstat -aon ^| findstr /R /C:":8000 .*LISTENING"') do (
+        echo Terminating process on port 8000 (PID: %%a)...
+        taskkill /F /T /PID %%a >nul 2>nul
+    )
+    ping 127.0.0.1 -n 2 >nul
+)
+
 echo.
-echo [*] Starting ComicCraft server on http://127.0.0.1:8000
+echo [*] Launching ComicCraft server...
+echo [*] Access URLs:
+echo       Web Studio: http://127.0.0.1:8000  (or http://localhost:8000)
+echo       API Docs:   http://127.0.0.1:8000/docs
+echo.
 echo [*] Press CTRL+C in this window to stop the server.
 echo.
 
-:: 5. Open default browser after a 2-second delay
-start "" cmd /c "timeout /t 2 /nobreak >nul && start http://127.0.0.1:8000"
+:: 6. Open browser after a 2-second delay using ping (avoids timeout redirection errors)
+start "" cmd /c "ping 127.0.0.1 -n 3 >nul && start http://127.0.0.1:8000"
 
-:: 6. Launch Uvicorn ASGI Server
-python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+:: 7. Launch Uvicorn ASGI Server bound to 0.0.0.0 (handles both 127.0.0.1 and localhost)
+python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
 if %errorlevel% neq 0 (
     echo.
-    echo [!] Server exited with an error.
+    echo [!] Server stopped or exited with code %errorlevel%.
     echo If dependencies are missing, run: pip install -r requirements.txt
     echo.
     pause
