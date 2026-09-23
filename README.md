@@ -242,10 +242,18 @@ DEV_MOCK_AI=true
 
 ### 4. Launch the Application
 
+#### Windows (1-Click Launcher):
+Simply run or double-click `run.bat`:
+```cmd
+run.bat
+```
+*This automatically checks Python, activates `env` or `venv` if present, initializes `.env`, opens `http://127.0.0.1:8000` in your default browser, and launches Uvicorn!*
+
+#### Manual / Cross-Platform:
 Start the FastAPI ASGI server with auto-reload:
 
 ```bash
-uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
 Once started, access the application:
