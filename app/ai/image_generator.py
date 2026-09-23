@@ -16,8 +16,13 @@ from app.config import Settings, get_settings
 
 logger = logging.getLogger(__name__)
 
-# Hugging Face Serverless Inference API endpoint
-HF_API_URL = "https://api-inference.huggingface.co/models/runwayml/stable-diffusion-v1-5"
+# Hugging Face Serverless Inference API endpoints
+DEFAULT_HF_ENDPOINTS = [
+    "https://api-inference.huggingface.co/models/runwayml/stable-diffusion-v1-5",
+    "https://router.huggingface.co/hf-inference/models/black-forest-labs/FLUX.1-schnell",
+    "https://router.huggingface.co/hf-inference/models/stabilityai/stable-diffusion-xl-base-1.0",
+]
+HF_API_URL = DEFAULT_HF_ENDPOINTS[0]
 
 # Canvas dimensions
 CANVAS_WIDTH = 768
@@ -302,13 +307,14 @@ def generate_image(
         }
         payload = {"inputs": enhanced_prompt}
 
+        endpoint_url = getattr(settings, "HF_API_URL", HF_API_URL)
         try:
-            logger.info("Calling Hugging Face Inference API for panel %s...", panel_number)
+            logger.info("Calling Hugging Face endpoint %s for panel %s...", endpoint_url, panel_number)
             response = requests.post(
-                HF_API_URL,
+                endpoint_url,
                 headers=headers,
                 json=payload,
-                timeout=30,
+                timeout=(2.5, 6.0),
             )
 
             if response.status_code == 200 and response.content:
@@ -326,18 +332,20 @@ def generate_image(
                     return str(output_path)
                 except Exception as parse_err:
                     logger.warning(
-                        "Failed to decode HF API response bytes as valid image (%s). Falling back.",
+                        "Failed to decode HF API response bytes as valid image (%s).",
                         parse_err,
                     )
             else:
                 logger.warning(
-                    "HF API call failed with status %s: %s. Falling back to Pillow.",
+                    "HF API call to %s failed with status %s: %s",
+                    endpoint_url,
                     response.status_code,
                     response.text[:200] if response.text else "Empty response",
                 )
         except Exception as api_err:
             logger.warning(
-                "Error contacting Hugging Face Inference API (%s). Falling back to Pillow.",
+                "Error contacting Hugging Face endpoint %s (%s). Falling back to Pillow.",
+                endpoint_url,
                 api_err,
             )
 

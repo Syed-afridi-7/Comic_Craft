@@ -115,6 +115,16 @@ def _generate_mock_outline(
     ]
 
 
+DEFAULT_FLASH_MODELS = [
+    "gemini-3.6-flash",
+    "gemini-3.8-flash",
+    "gemini-3.7-flash",
+    "gemini-flash-latest",
+    "gemini-2.5-flash",
+    "gemini-1.5-flash",
+]
+
+
 def generate_outline(
     user_prompt: str,
     character_name: str = "Hero",
@@ -122,10 +132,10 @@ def generate_outline(
     tone: str = "Dramatic",
     art_style: str = "Classic Comic Book",
 ) -> List[Dict[str, Any]]:
-    """Generate a structured 5-panel comic storyline outline using Gemini 1.5 Flash.
+    """Generate a structured 5-panel comic storyline outline using Gemini Flash.
 
     Falls back safely to a deterministic, dynamic mock outline if offline, in test mode,
-    without API keys, or if model generation fails.
+    without API keys, or if all model candidates fail.
 
     Args:
         user_prompt: Core story idea or premise.
@@ -148,69 +158,79 @@ def generate_outline(
         logger.info("Gemini client unavailable; falling back to mock outline.")
         return _generate_mock_outline(user_prompt, character_name, setting, tone, art_style)
 
-    try:
-        model = genai.GenerativeModel(
-            model_name="gemini-1.5-flash",
-            system_instruction=SYSTEM_INSTRUCTION,
-            generation_config={"response_mime_type": "application/json"},
-        )
+    preferred_model = getattr(settings, "GEMINI_MODEL_FLASH", "gemini-3.6-flash")
+    raw_candidates = [preferred_model] + DEFAULT_FLASH_MODELS
+    candidate_models = list(dict.fromkeys(raw_candidates))
 
-        user_content = (
-            f"Story Premise: {user_prompt}\n"
-            f"Protagonist Name: {character_name}\n"
-            f"Setting: {setting}\n"
-            f"Tone: {tone}\n"
-            f"Art Style: {art_style}\n\n"
-            "Generate the 5-panel comic storyline outline as a JSON array of 5 panel objects."
-        )
+    user_content = (
+        f"Story Premise: {user_prompt}\n"
+        f"Protagonist Name: {character_name}\n"
+        f"Setting: {setting}\n"
+        f"Tone: {tone}\n"
+        f"Art Style: {art_style}\n\n"
+        "Generate the 5-panel comic storyline outline as a JSON array of 5 panel objects."
+    )
 
-        response = model.generate_content(user_content)
-        raw_text = response.text.strip()
-
-        # Handle potential markdown wrappers
-        if raw_text.startswith("```"):
-            lines = raw_text.splitlines()
-            if lines[0].startswith("```"):
-                lines = lines[1:]
-            if lines and lines[-1].strip() == "```":
-                lines = lines[:-1]
-            raw_text = "\n".join(lines).strip()
-
-        parsed = json.loads(raw_text)
-
-        # Extract array if nested under a key
-        if isinstance(parsed, list):
-            raw_panels = parsed
-        elif isinstance(parsed, dict):
-            raw_panels = []
-            for candidate_key in ("panels", "outline", "storyboard", "data", "layout"):
-                if candidate_key in parsed and isinstance(parsed[candidate_key], list):
-                    raw_panels = parsed[candidate_key]
-                    break
-        else:
-            raw_panels = []
-
-        if len(raw_panels) != 5:
-            raise ValueError(f"Expected exactly 5 panels from Gemini Flash, received {len(raw_panels)}")
-
-        validated_panels: List[Dict[str, Any]] = []
-        for item in raw_panels:
-            outline_model = PanelOutline(
-                panel=int(item.get("panel")),
-                title=str(item.get("title", "")).strip(),
-                scene_description=str(item.get("scene_description", "")).strip(),
-                image_prompt=str(item.get("image_prompt", "")).strip(),
+    for model_name in candidate_models:
+        try:
+            logger.info("Attempting Gemini Flash outline generation with model: %s", model_name)
+            model = genai.GenerativeModel(
+                model_name=model_name,
+                system_instruction=SYSTEM_INSTRUCTION,
+                generation_config={"response_mime_type": "application/json"},
             )
-            if not outline_model.title or not outline_model.scene_description or not outline_model.image_prompt:
-                raise ValueError("PanelOutline fields must not be empty.")
-            validated_panels.append(outline_model.model_dump())
 
-        logger.info("Successfully generated 5-panel outline using Gemini Flash.")
-        return validated_panels
+            response = model.generate_content(user_content)
+            raw_text = response.text.strip()
 
-    except Exception as exc:
-        logger.warning(
-            "Gemini Flash outline generation encountered an error: %s. Falling back to dynamic mock outline.",
-            exc,
-        )
-        return _generate_mock_outline(user_prompt, character_name, setting, tone, art_style)
+            # Handle potential markdown wrappers
+            if raw_text.startswith("```"):
+                lines = raw_text.splitlines()
+                if lines[0].startswith("```"):
+                    lines = lines[1:]
+                if lines and lines[-1].strip() == "```":
+                    lines = lines[:-1]
+                raw_text = "\n".join(lines).strip()
+
+            parsed = json.loads(raw_text)
+
+            # Extract array if nested under a key
+            if isinstance(parsed, list):
+                raw_panels = parsed
+            elif isinstance(parsed, dict):
+                raw_panels = []
+                for candidate_key in ("panels", "outline", "storyboard", "data", "layout"):
+                    if candidate_key in parsed and isinstance(parsed[candidate_key], list):
+                        raw_panels = parsed[candidate_key]
+                        break
+            else:
+                raw_panels = []
+
+            if len(raw_panels) != 5:
+                raise ValueError(f"Expected exactly 5 panels from Gemini Flash, received {len(raw_panels)}")
+
+            validated_panels: List[Dict[str, Any]] = []
+            for item in raw_panels:
+                outline_model = PanelOutline(
+                    panel=int(item.get("panel")),
+                    title=str(item.get("title", "")).strip(),
+                    scene_description=str(item.get("scene_description", "")).strip(),
+                    image_prompt=str(item.get("image_prompt", "")).strip(),
+                )
+                if not outline_model.title or not outline_model.scene_description or not outline_model.image_prompt:
+                    raise ValueError("PanelOutline fields must not be empty.")
+                validated_panels.append(outline_model.model_dump())
+
+            logger.info("Successfully generated 5-panel outline using Gemini Flash (%s).", model_name)
+            return validated_panels
+
+        except Exception as exc:
+            logger.warning(
+                "Gemini Flash model '%s' encountered an error: %s. Trying next candidate...",
+                model_name,
+                exc,
+            )
+            continue
+
+    logger.warning("All Gemini Flash candidate models failed. Falling back to dynamic mock outline.")
+    return _generate_mock_outline(user_prompt, character_name, setting, tone, art_style)

@@ -9,3 +9,4 @@ static/exports/*.pdf
 !static/panels/.gitkeep
 !static/exports/.gitkeep
 .pytest_cache/
+~$*

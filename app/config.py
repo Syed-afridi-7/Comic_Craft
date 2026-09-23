@@ -17,6 +17,9 @@ class Settings:
         gemini_api_key: Optional[str] = None,
         hf_api_key: Optional[str] = None,
         dev_mock_ai: Optional[bool] = None,
+        gemini_model_flash: Optional[str] = None,
+        gemini_model_pro: Optional[str] = None,
+        hf_api_url: Optional[str] = None,
     ):
         self.BASE_DIR: Path = (
             base_dir if base_dir is not None else Path(__file__).resolve().parent.parent
@@ -36,6 +39,25 @@ class Settings:
             env_val = os.getenv("DEV_MOCK_AI", "").strip().lower()
             env_mock = env_val in ("true", "1", "yes")
             self.DEV_MOCK_AI = env_mock or not bool(self.GEMINI_API_KEY.strip())
+
+        self.GEMINI_MODEL_FLASH: str = (
+            gemini_model_flash
+            if gemini_model_flash is not None
+            else os.getenv("GEMINI_MODEL_FLASH", "gemini-3.6-flash")
+        )
+        self.GEMINI_MODEL_PRO: str = (
+            gemini_model_pro
+            if gemini_model_pro is not None
+            else os.getenv("GEMINI_MODEL_PRO", "gemini-3.6-flash")
+        )
+        self.HF_API_URL: str = (
+            hf_api_url
+            if hf_api_url is not None
+            else os.getenv(
+                "HF_API_URL",
+                "https://router.huggingface.co/hf-inference/models/black-forest-labs/FLUX.1-schnell",
+            )
+        )
 
         self.STATIC_DIR: Path = self.BASE_DIR / "static"
         self.PANELS_DIR: Path = self.STATIC_DIR / "panels"

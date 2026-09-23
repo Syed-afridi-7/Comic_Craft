@@ -99,15 +99,27 @@ def _get_mock_story(
     return mock_panels
 
 
+DEFAULT_PRO_MODELS = [
+    "gemini-pro-latest",
+    "gemini-3.1-pro-preview",
+    "gemini-2.5-pro",
+    "gemini-1.5-pro",
+    "gemini-3.6-flash",
+    "gemini-3.8-flash",
+    "gemini-3.7-flash",
+    "gemini-flash-latest",
+]
+
+
 def generate_story(
     outline: List[Dict[str, Any]],
     character_name: str = "Hero",
     tone: str = "Dramatic",
 ) -> List[Dict[str, Any]]:
-    """Generate narrative captions, storytelling, and character dialogue for a 5-panel comic using Gemini 1.5 Pro.
+    """Generate narrative captions, storytelling, and character dialogue for a 5-panel comic using Gemini Pro.
 
     Falls back safely to contextual mock narrative if offline, in test mode,
-    without API keys, or if model generation fails.
+    without API keys, or if all model candidates fail.
 
     Args:
         outline: 5-panel outline list from gemini_flash.generate_outline.
@@ -128,70 +140,80 @@ def generate_story(
         logger.info("Gemini client unavailable; falling back to mock story.")
         return _get_mock_story(outline, character_name, tone)
 
-    try:
-        model = genai.GenerativeModel(
-            model_name="gemini-1.5-pro",
-            system_instruction=SYSTEM_INSTRUCTION,
-            generation_config={"response_mime_type": "application/json"},
-        )
+    preferred_model = getattr(settings, "GEMINI_MODEL_PRO", "gemini-pro-latest")
+    raw_candidates = [preferred_model] + DEFAULT_PRO_MODELS
+    candidate_models = list(dict.fromkeys(raw_candidates))
 
-        outline_summary = json.dumps(outline, indent=2) if outline else "No outline provided."
-        user_content = (
-            f"Protagonist: {character_name}\n"
-            f"Story Tone: {tone}\n"
-            f"Comic Outline:\n{outline_summary}\n\n"
-            "Write the caption, narration, and character dialogue for each of the 5 panels. "
-            "Dialogue must explicitly show speech in comic format (e.g. \"Hero: '...' \"). "
-            "Return a JSON array containing exactly 5 panel objects."
-        )
+    outline_summary = json.dumps(outline, indent=2) if outline else "No outline provided."
+    user_content = (
+        f"Protagonist: {character_name}\n"
+        f"Story Tone: {tone}\n"
+        f"Comic Outline:\n{outline_summary}\n\n"
+        "Write the caption, narration, and character dialogue for each of the 5 panels. "
+        "Dialogue must explicitly show speech in comic format (e.g. \"Hero: '...' \"). "
+        "Return a JSON array containing exactly 5 panel objects."
+    )
 
-        response = model.generate_content(user_content)
-        raw_text = response.text.strip()
-
-        # Handle markdown blocks if present
-        if raw_text.startswith("```"):
-            lines = raw_text.splitlines()
-            if lines[0].startswith("```"):
-                lines = lines[1:]
-            if lines and lines[-1].strip() == "```":
-                lines = lines[:-1]
-            raw_text = "\n".join(lines).strip()
-
-        parsed = json.loads(raw_text)
-
-        # Extract array if nested under a key
-        if isinstance(parsed, list):
-            raw_panels = parsed
-        elif isinstance(parsed, dict):
-            raw_panels = []
-            for candidate_key in ("panels", "story", "storyboard", "data", "layout"):
-                if candidate_key in parsed and isinstance(parsed[candidate_key], list):
-                    raw_panels = parsed[candidate_key]
-                    break
-        else:
-            raw_panels = []
-
-        if len(raw_panels) != 5:
-            raise ValueError(f"Expected exactly 5 panels from Gemini Pro, received {len(raw_panels)}")
-
-        validated_panels: List[Dict[str, Any]] = []
-        for item in raw_panels:
-            story_model = PanelStory(
-                panel=int(item.get("panel")),
-                caption=str(item.get("caption", "")).strip(),
-                narration=str(item.get("narration", "")).strip(),
-                dialogue=str(item.get("dialogue", "")).strip(),
+    for model_name in candidate_models:
+        try:
+            logger.info("Attempting Gemini Pro narrative story generation with model: %s", model_name)
+            model = genai.GenerativeModel(
+                model_name=model_name,
+                system_instruction=SYSTEM_INSTRUCTION,
+                generation_config={"response_mime_type": "application/json"},
             )
-            if not story_model.caption or not story_model.narration or not story_model.dialogue:
-                raise ValueError("PanelStory fields must not be empty.")
-            validated_panels.append(story_model.model_dump())
 
-        logger.info("Successfully generated 5-panel narrative story using Gemini Pro.")
-        return validated_panels
+            response = model.generate_content(user_content)
+            raw_text = response.text.strip()
 
-    except Exception as exc:
-        logger.warning(
-            "Gemini Pro story generation encountered an error: %s. Falling back to mock story.",
-            exc,
-        )
-        return _get_mock_story(outline, character_name, tone)
+            # Handle markdown blocks if present
+            if raw_text.startswith("```"):
+                lines = raw_text.splitlines()
+                if lines[0].startswith("```"):
+                    lines = lines[1:]
+                if lines and lines[-1].strip() == "```":
+                    lines = lines[:-1]
+                raw_text = "\n".join(lines).strip()
+
+            parsed = json.loads(raw_text)
+
+            # Extract array if nested under a key
+            if isinstance(parsed, list):
+                raw_panels = parsed
+            elif isinstance(parsed, dict):
+                raw_panels = []
+                for candidate_key in ("panels", "story", "storyboard", "data", "layout"):
+                    if candidate_key in parsed and isinstance(parsed[candidate_key], list):
+                        raw_panels = parsed[candidate_key]
+                        break
+            else:
+                raw_panels = []
+
+            if len(raw_panels) != 5:
+                raise ValueError(f"Expected exactly 5 panels from Gemini Pro, received {len(raw_panels)}")
+
+            validated_panels: List[Dict[str, Any]] = []
+            for item in raw_panels:
+                story_model = PanelStory(
+                    panel=int(item.get("panel")),
+                    caption=str(item.get("caption", "")).strip(),
+                    narration=str(item.get("narration", "")).strip(),
+                    dialogue=str(item.get("dialogue", "")).strip(),
+                )
+                if not story_model.caption or not story_model.narration or not story_model.dialogue:
+                    raise ValueError("PanelStory fields must not be empty.")
+                validated_panels.append(story_model.model_dump())
+
+            logger.info("Successfully generated 5-panel narrative story using Gemini model %s.", model_name)
+            return validated_panels
+
+        except Exception as exc:
+            logger.warning(
+                "Gemini model '%s' story generation encountered an error: %s. Trying next candidate...",
+                model_name,
+                exc,
+            )
+            continue
+
+    logger.warning("All Gemini Pro candidate models failed. Falling back to mock story.")
+    return _get_mock_story(outline, character_name, tone)

@@ -138,7 +138,7 @@ def test_generate_story_gemini_success(sample_outline):
     assert "Lyra: 'Whatever is hidden here, I will find it.'" in story_panels[0]["dialogue"]
     mock_genai.GenerativeModel.assert_called_once()
     call_args, call_kwargs = mock_genai.GenerativeModel.call_args
-    assert call_kwargs.get("model_name") == "gemini-1.5-pro"
+    assert call_kwargs.get("model_name") in ["gemini-pro-latest", "gemini-1.5-pro", "gemini-3.6-flash"]
 
 
 def test_generate_story_gemini_exception_resilience(sample_outline):

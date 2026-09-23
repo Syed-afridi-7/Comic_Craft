@@ -9,8 +9,11 @@ from app.schemas import ComicResponse
 
 
 @pytest.fixture
-def client():
-    """TestClient fixture with lifespan events active."""
+def client(monkeypatch):
+    """TestClient fixture with mock AI enabled for fast, deterministic route verification."""
+    from app.config import get_settings
+    settings = get_settings()
+    monkeypatch.setattr(settings, "DEV_MOCK_AI", True)
     with TestClient(app) as test_client:
         yield test_client
 

@@ -155,7 +155,7 @@ def test_generate_image_hf_api_success(tmp_path):
     called_headers = mock_post.call_args[1].get("headers", {})
     called_json = mock_post.call_args[1].get("json", {})
 
-    assert "api-inference.huggingface.co" in called_url
+    assert "huggingface.co" in called_url
     assert called_headers.get("Authorization") == "Bearer hf_test_valid_token_12345"
     assert "Anime style" in called_json.get("inputs", "")
     assert "Cyberpunk warrior" in called_json.get("inputs", "")
