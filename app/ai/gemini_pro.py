@@ -2,6 +2,7 @@
 
 import json
 import logging
+import time
 from typing import Any, Dict, List
 
 from app.ai.gemini_client import configure_gemini
@@ -9,6 +10,9 @@ from app.config import get_settings
 from app.schemas import PanelStory
 
 logger = logging.getLogger(__name__)
+
+# Cooldown timestamp to prevent 120s latency loops when daily API quota is exhausted
+_QUOTA_COOLDOWN_UNTIL = 0.0
 
 SYSTEM_INSTRUCTION = (
     "You are an expert comic book scriptwriter and dialogue specialist. "
@@ -100,14 +104,11 @@ def _get_mock_story(
 
 
 DEFAULT_PRO_MODELS = [
-    "gemini-pro-latest",
-    "gemini-3.1-pro-preview",
-    "gemini-2.5-pro",
-    "gemini-1.5-pro",
     "gemini-3.6-flash",
     "gemini-3.8-flash",
-    "gemini-3.7-flash",
     "gemini-flash-latest",
+    "gemini-pro-latest",
+    "gemini-3.1-pro-preview",
 ]
 
 
@@ -129,10 +130,14 @@ def generate_story(
     Returns:
         List of 5 panel story dictionaries adhering to PanelStory schema.
     """
+    global _QUOTA_COOLDOWN_UNTIL
     settings = get_settings()
 
-    if settings.DEV_MOCK_AI:
-        logger.info("DEV_MOCK_AI enabled; using mock story.")
+    if settings.DEV_MOCK_AI or time.time() < _QUOTA_COOLDOWN_UNTIL:
+        if time.time() < _QUOTA_COOLDOWN_UNTIL:
+            logger.info("Gemini API quota currently in cooldown; using mock story.")
+        else:
+            logger.info("DEV_MOCK_AI enabled; using mock story.")
         return _get_mock_story(outline, character_name, tone)
 
     genai = configure_gemini()
@@ -140,7 +145,7 @@ def generate_story(
         logger.info("Gemini client unavailable; falling back to mock story.")
         return _get_mock_story(outline, character_name, tone)
 
-    preferred_model = getattr(settings, "GEMINI_MODEL_PRO", "gemini-pro-latest")
+    preferred_model = getattr(settings, "GEMINI_MODEL_PRO", "gemini-3.6-flash")
     raw_candidates = [preferred_model] + DEFAULT_PRO_MODELS
     candidate_models = list(dict.fromkeys(raw_candidates))
 
@@ -163,7 +168,7 @@ def generate_story(
                 generation_config={"response_mime_type": "application/json"},
             )
 
-            response = model.generate_content(user_content)
+            response = model.generate_content(user_content, request_options={"timeout": 6.0})
             raw_text = response.text.strip()
 
             # Handle markdown blocks if present
@@ -208,11 +213,18 @@ def generate_story(
             return validated_panels
 
         except Exception as exc:
+            err_msg = str(exc).lower()
             logger.warning(
-                "Gemini model '%s' story generation encountered an error: %s. Trying next candidate...",
+                "Gemini model '%s' story generation encountered an error: %s.",
                 model_name,
                 exc,
             )
+            if "429" in err_msg or "quota" in err_msg or "resourceexhausted" in err_msg:
+                # If specific pro model has 0 quota, try flash; if general quota exceeded, break immediately
+                if "limit: 0" not in err_msg:
+                    _QUOTA_COOLDOWN_UNTIL = time.time() + 180.0
+                    logger.warning("Daily Gemini API quota reached. Triggering fast fallback circuit breaker.")
+                    break
             continue
 
     logger.warning("All Gemini Pro candidate models failed. Falling back to mock story.")

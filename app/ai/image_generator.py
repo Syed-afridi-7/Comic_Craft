@@ -24,6 +24,9 @@ DEFAULT_HF_ENDPOINTS = [
 ]
 HF_API_URL = DEFAULT_HF_ENDPOINTS[0]
 
+# Cooldown timestamp to prevent repeated network delays when Hugging Face API errors or is slow
+_HF_COOLDOWN_UNTIL = 0.0
+
 # Canvas dimensions
 CANVAS_WIDTH = 768
 CANVAS_HEIGHT = 512
@@ -295,8 +298,10 @@ def generate_image(
 
     output_path = settings.PANELS_DIR / clean_filename
 
-    # Attempt Hugging Face Inference API if configured and mock mode is off
-    if settings.HF_API_KEY and not settings.DEV_MOCK_AI:
+    global _HF_COOLDOWN_UNTIL
+
+    # Attempt Hugging Face Inference API if configured, mock mode is off, and not in cooldown
+    if settings.HF_API_KEY and not settings.DEV_MOCK_AI and time.time() >= _HF_COOLDOWN_UNTIL:
         enhanced_prompt = (
             f"comic book panel illustration, {art_style} style, vivid detailed colors, "
             f"clean lineart, graphic novel art, high quality: {prompt}"
@@ -314,7 +319,7 @@ def generate_image(
                 endpoint_url,
                 headers=headers,
                 json=payload,
-                timeout=(2.5, 6.0),
+                timeout=(2.0, 4.0),
             )
 
             if response.status_code == 200 and response.content:
@@ -337,17 +342,18 @@ def generate_image(
                     )
             else:
                 logger.warning(
-                    "HF API call to %s failed with status %s: %s",
+                    "HF API call to %s failed with status %s. Setting cooldown.",
                     endpoint_url,
                     response.status_code,
-                    response.text[:200] if response.text else "Empty response",
                 )
+                _HF_COOLDOWN_UNTIL = time.time() + 180.0
         except Exception as api_err:
             logger.warning(
-                "Error contacting Hugging Face endpoint %s (%s). Falling back to Pillow.",
+                "Error contacting Hugging Face endpoint %s (%s). Setting cooldown.",
                 endpoint_url,
                 api_err,
             )
+            _HF_COOLDOWN_UNTIL = time.time() + 180.0
 
     # Fallback to Pillow procedural stylized comic panel generator
     _generate_fallback_image(

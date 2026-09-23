@@ -2,6 +2,7 @@
 
 import json
 import logging
+import time
 from typing import Any, Dict, List
 
 from app.ai.gemini_client import configure_gemini
@@ -9,6 +10,9 @@ from app.config import get_settings
 from app.schemas import PanelOutline
 
 logger = logging.getLogger(__name__)
+
+# Cooldown timestamp to prevent 120s latency loops when daily API quota is exhausted
+_QUOTA_COOLDOWN_UNTIL = 0.0
 
 SYSTEM_INSTRUCTION = (
     "You are an expert comic book storyboard artist and scriptwriter. "
@@ -147,10 +151,14 @@ def generate_outline(
     Returns:
         List of 5 panel dictionaries adhering to PanelOutline schema.
     """
+    global _QUOTA_COOLDOWN_UNTIL
     settings = get_settings()
 
-    if settings.DEV_MOCK_AI:
-        logger.info("DEV_MOCK_AI enabled; using dynamic mock outline.")
+    if settings.DEV_MOCK_AI or time.time() < _QUOTA_COOLDOWN_UNTIL:
+        if time.time() < _QUOTA_COOLDOWN_UNTIL:
+            logger.info("Gemini API quota currently in cooldown; using dynamic mock outline.")
+        else:
+            logger.info("DEV_MOCK_AI enabled; using dynamic mock outline.")
         return _generate_mock_outline(user_prompt, character_name, setting, tone, art_style)
 
     genai = configure_gemini()
@@ -180,7 +188,7 @@ def generate_outline(
                 generation_config={"response_mime_type": "application/json"},
             )
 
-            response = model.generate_content(user_content)
+            response = model.generate_content(user_content, request_options={"timeout": 6.0})
             raw_text = response.text.strip()
 
             # Handle potential markdown wrappers
@@ -225,11 +233,16 @@ def generate_outline(
             return validated_panels
 
         except Exception as exc:
+            err_msg = str(exc).lower()
             logger.warning(
-                "Gemini Flash model '%s' encountered an error: %s. Trying next candidate...",
+                "Gemini Flash model '%s' encountered an error: %s.",
                 model_name,
                 exc,
             )
+            if "429" in err_msg or "quota" in err_msg or "resourceexhausted" in err_msg:
+                _QUOTA_COOLDOWN_UNTIL = time.time() + 180.0
+                logger.warning("Daily Gemini API quota reached. Triggering fast fallback circuit breaker.")
+                break
             continue
 
     logger.warning("All Gemini Flash candidate models failed. Falling back to dynamic mock outline.")
